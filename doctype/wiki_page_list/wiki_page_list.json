@@ -1,0 +1,60 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "LIST.#####.",
+ "creation": "2025-09-19 17:38:33.632849",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "wiki_space",
+  "user",
+  "wiki_page_list_child"
+ ],
+ "fields": [
+  {
+   "fieldname": "wiki_space",
+   "fieldtype": "Link",
+   "label": "Wiki Space",
+   "options": "Wiki Space"
+  },
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "label": "User",
+   "options": "User"
+  },
+  {
+   "fieldname": "wiki_page_list_child",
+   "fieldtype": "Table",
+   "label": "Wiki Page List",
+   "options": "Wiki Page List Child"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2025-09-19 17:45:13.681769",
+ "modified_by": "Administrator",
+ "module": "Wiki",
+ "name": "Wiki Page List",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}
