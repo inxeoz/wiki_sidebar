@@ -24,8 +24,73 @@ from frappe.website.website_generator import WebsiteGenerator
 from wiki.wiki.doctype.wiki_page.search import build_index_in_background, drop_index
 from wiki.wiki.doctype.wiki_settings.wiki_settings import get_all_spaces
 
+def get_allowed_page_list_using_token():
+
+
+        wiki_page_access_id = frappe.form_dict.get("token")
+        if not wiki_page_access_id:
+            return []
+
+        page_access_list = frappe.get_all(
+                    "wiki_page_access_list_child",
+                    filters={"parent": wiki_page_access_id},
+                    fields=["name", "wiki_page", "page_title", "visible", "editable"]
+                )
+        # print(f"page_access_list {page_access_list}")
+
+        return page_access_list
+
+def is_user_guest():
+
+    return frappe.session.user == "Guest"
+
+
+def redirect_to_login():
+        frappe.local.response["type"] = "redirect"
+        frappe.local.response["location"] = "/login?" + urlencode({"redirect-to": frappe.request.url})
+        raise frappe.Redirect
+
+def redirect_to_page(index=0):
+
+        wiki_page_id = get_allowed_page_list_using_token()[index]["wiki_page"]
+        wiki_page_route = frappe.db.get_value("Wiki Page", wiki_page_id, "route")
+
+        token  = frappe.form_dict.get("token")
+        frappe.local.response["type"] = "redirect"
+        frappe.local.response["location"] = f"/{wiki_page_route}?token={token}"
+        raise frappe.Redirect
+
+def is_page_accessiable(page_name=None):
+
+    page_list = get_allowed_page_list_using_token()
+    if page_name is None :
+        return False
+
+    for allowed_page_data in page_list:
+        if allowed_page_data["wiki_page"] == page_name :
+            return True
+    return False
+
+def get_authorized_page_route( index=0):
+
+        page_list = get_allowed_page_list_using_token()
+
+        if len(page_list) < index + 1 :
+            return -1, "", ""
+        wiki_page_id  = page_list[index]["wiki_page"]
+
+        wiki_page_route = frappe.db.get_value("Wiki Page", wiki_page_id, "route")
+
+        return (index, wiki_page_id, wiki_page_route)
+
+def guest_access_disabled():
+    wiki_settings = frappe.get_single("Wiki Settings")
+    return wiki_settings.disable_guest_access
+
+
 
 class WikiPage(WebsiteGenerator):
+
     def before_save(self):
         if old_title := frappe.db.get_value("Wiki Page", self.name, "title"):
             if old_title != self.title:
@@ -153,20 +218,31 @@ class WikiPage(WebsiteGenerator):
         self.save()
 
     def verify_permission(self):
-            
         wiki_settings = frappe.get_single("Wiki Settings")
-        user_is_guest = frappe.session.user == "Guest"
 
-        disable_guest_access = False
-        if wiki_settings.disable_guest_access and user_is_guest:
-            disable_guest_access = True
+        if is_user_guest() :
+            if guest_access_disabled():
+                redirect_to_login()
+            else:
+                return
 
-        access_permitted = self.allow_guest or not user_is_guest
+        ### page list length
+        if len(get_allowed_page_list_using_token()) < 1 :
+            redirect_to_login()
 
-        if not access_permitted or disable_guest_access:
-            frappe.local.response["type"] = "redirect"
-            frappe.local.response["location"] = "/login?" + urlencode({"redirect-to": frappe.request.url})
-            raise frappe.Redirect
+        if not is_page_accessiable(self.name):
+            redirect_to_page(0)
+        # frappe.throw(_("verification error 404"), 	frappe.PermissionError)
+
+
+
+
+
+
+
+
+
+
 
     def set_breadcrumbs(self, context):
         context.add_breadcrumbs = True
@@ -219,7 +295,7 @@ class WikiPage(WebsiteGenerator):
         self.set_breadcrumbs(context)
 
         # Get count of pending patches for admin banner
-        if frappe.session.user != "Guest":
+        if not is_user_guest():
             context.is_admin = frappe.has_permission("Wiki Page Patch", "write")
             if context.is_admin:
                 wiki_space_name = frappe.get_value("Wiki Group Item", {"wiki_page": self.name}, "parent")
@@ -359,11 +435,6 @@ class WikiPage(WebsiteGenerator):
     def get_sidebar_items(self):
         wiki_sidebar = frappe.get_doc("Wiki Space", {"route": self.get_space_route()}).wiki_sidebars
         sidebar = {}
-  
-        # token = frappe.form_dict.get("token")
-        
-        is_token_valid, token,  page_list_arr  = details_of_token()
-
 
         for sidebar_item in wiki_sidebar:
             if sidebar_item.hide_on_sidebar:
@@ -371,19 +442,9 @@ class WikiPage(WebsiteGenerator):
 
             wiki_page = frappe.get_cached_doc("Wiki Page", sidebar_item.wiki_page)
 
-            if is_token_valid :
-                
-                page_details = is_page_in_allowed_list(wiki_page.name, page_list_arr)
-                
-                if  page_details is None  or len(page_details) < 1 :
-                    continue
-                
-                wiki_page.route  = wiki_page.route + "?token=" + token
-
             permitted = wiki_page.allow_guest or frappe.session.user != "Guest"
             if not permitted:
                 continue
-            
 
             if sidebar_item.parent_label not in sidebar:
                 sidebar[sidebar_item.parent_label] = [
@@ -391,7 +452,7 @@ class WikiPage(WebsiteGenerator):
                         "name": wiki_page.name,
                         "type": "Wiki Page",
                         "title": wiki_page.title,
-                        "route": wiki_page.route ,
+                        "route": wiki_page.route,
                         "group_name": sidebar_item.parent_label,
                     }
                 ]
@@ -401,7 +462,7 @@ class WikiPage(WebsiteGenerator):
                         "name": wiki_page.name,
                         "type": "Wiki Page",
                         "title": wiki_page.title,
-                        "route": wiki_page.route ,
+                        "route": wiki_page.route,
                         "group_name": sidebar_item.parent_label,
                     }
                 ]
@@ -757,65 +818,3 @@ def get_page_content(wiki_page_name: str):
         "next_page": next_page,
         "prev_page": prev_page,
     }
-
-
-import requests
-
-
-def details_of_token():
-    token = frappe.form_dict.get("token")
-    if token is not None :
-        
-        page_list_arr = get_access_list(token)
-        return (True, token, page_list_arr)
-    
-    return (False, "", [])
-
-def get_access_list(token:str):
-    
-    
-    response = requests.get("http://127.0.0.1:1880/data?token="+token)
-    
-    if response.json()["status"] == "ok" :
-        
-        page_list_arr = response.json()["data"]["pages"]
-        print(f"page list arr {page_list_arr}")
-        
-        
-        return page_list_arr
-    return []
-    
-def is_page_in_allowed_list(page_id:str, page_list_arr: list ):
-    
-    if len(page_id) < 1 or len(page_list_arr) < 1 :
-        # return  
-        print("[]")
-        return {}
-    
-    for page_detail in page_list_arr :
-        
-        if page_id == page_detail["wiki_page_id"] :
-            
-            
-            print(f"EEEEEEEEEEEEEEEEEEE {page_detail} and page_id {page_id}")
-            return page_detail
-
-            # return 
-    
-    
-    # print(f"WWWWWWWWWWWWW {type (response.json()["status"] )} WWWWWWWWWWW")
-    # print(f"WWWWWWWWWWWWW {response.json()["status"]} WWWWWWWWWWW")
-    
-    
-    # print(f"WWWWWWWWWWWWW {response.json()["data"]["pages"]} WWWWWWWWWWW")
-    
-    
-    
-#     import requests
-
-# # Make a GET request
-# response = requests.get("https://httpbin.org/get")
-
-# # Print the status code and response body
-# print(response.status_code)   # 200 means OK
-# print(response.text)          # raw response text
