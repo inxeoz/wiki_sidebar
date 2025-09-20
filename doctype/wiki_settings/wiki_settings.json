@@ -15,6 +15,7 @@
   "collapse_sidebar_groups",
   "enable_table_of_contents",
   "disable_guest_access",
+  "allow_only_using_token",
   "navbar_tab",
   "navbar_column",
   "navbar",
@@ -185,13 +186,19 @@
   {
    "fieldname": "column_break_yaoi",
    "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "allow_only_using_token",
+   "fieldtype": "Check",
+   "label": "Allow Only Using Token"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2025-06-16 13:13:21.868523",
+ "modified": "2025-09-21 00:28:40.227775",
  "modified_by": "Administrator",
  "module": "Wiki",
  "name": "Wiki Settings",

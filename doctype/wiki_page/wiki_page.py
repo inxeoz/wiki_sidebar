@@ -155,6 +155,29 @@ class WikiPage(WebsiteGenerator):
     def verify_permission(self):
             
         wiki_settings = frappe.get_single("Wiki Settings")
+        
+        if wiki_settings.allow_only_using_token:
+            
+            is_token_valid, token, page_list_arr = details_of_token()
+            
+            if not is_token_valid :
+                frappe.throw("invalid token")
+                
+            page_exist_lvl, page_details = is_page_in_allowed_list(self.name, page_list_arr)
+            
+            if page_exist_lvl == -1 :
+                frappe.throw("you dont have access to this documentation")
+                
+            if page_exist_lvl == 0:
+                redirect_to_page(page_details["wiki_page_id"], token)
+                return
+        
+            if page_exist_lvl == 1:
+                return
+            
+            
+
+            
         user_is_guest = frappe.session.user == "Guest"
 
         disable_guest_access = False
@@ -357,6 +380,7 @@ class WikiPage(WebsiteGenerator):
         return sidebar_html
 
     def get_sidebar_items(self):
+        
         wiki_sidebar = frappe.get_doc("Wiki Space", {"route": self.get_space_route()}).wiki_sidebars
         sidebar = {}
   
@@ -371,11 +395,11 @@ class WikiPage(WebsiteGenerator):
 
             wiki_page = frappe.get_cached_doc("Wiki Page", sidebar_item.wiki_page)
 
-            if is_token_valid :
+            if is_token_valid and frappe.get_single("Wiki Settings").allow_only_using_token :
                 
-                page_details = is_page_in_allowed_list(wiki_page.name, page_list_arr)
+                page_exist_lvl,  page_details = is_page_in_allowed_list(wiki_page.name, page_list_arr)
                 
-                if  page_details is None  or len(page_details) < 1 :
+                if  page_exist_lvl != 1:
                     continue
                 
                 wiki_page.route  = wiki_page.route + "?token=" + token
@@ -553,6 +577,10 @@ def update(
     draft = sbool(draft)
 
     status = "Draft" if draft else "Under Review"
+    
+    if not has_edit_permission():
+        frappe.throw(_("You are not permitted to edit this page"), frappe.PermissionError)
+  
     if wiki_page_patch:
         patch = frappe.get_doc("Wiki Page Patch", wiki_page_patch)
         patch.new_title = title
@@ -668,7 +696,12 @@ def delete_wiki_page(wiki_page_route):
 
 @frappe.whitelist(allow_guest=True)
 def has_edit_permission():
-    return frappe.has_permission(doctype="Wiki Page", ptype="write", throw=False)
+    
+    # return False
+
+    # return frappe.has_permission(doctype="Wiki Page", ptype="write", throw=False)
+    
+    return is_edit_allowed_for_page() 
 
 
 @frappe.whitelist()
@@ -790,17 +823,47 @@ def is_page_in_allowed_list(page_id:str, page_list_arr: list ):
     if len(page_id) < 1 or len(page_list_arr) < 1 :
         # return  
         print("[]")
-        return {}
+        return (-1, {})
     
     for page_detail in page_list_arr :
         
         if page_id == page_detail["wiki_page_id"] :
             
             
-            print(f"EEEEEEEEEEEEEEEEEEE {page_detail} and page_id {page_id}")
-            return page_detail
+            print(f"EEEEEEEEEEEEEEEEEEE {page_detail} and page_id {page_id} {type ( page_detail["edit"] ) } <-------")
+            return (1, page_detail)
 
             # return 
+    return (0,  page_list_arr[0])
+    
+
+
+def is_edit_allowed_for_page(wiki_page_name: str =  None) -> bool:
+    # Admin/standard permission short-circuit
+    
+    
+    if wiki_page_name is None :
+        return frappe.has_permission(doctype="Wiki Page", ptype="write", throw=False)
+    
+    is_token_valid, token, page_list_arr = details_of_token()
+    if not is_token_valid:
+        return False
+    
+    page_exist_lvl, page_detail = is_page_in_allowed_list(wiki_page_name, page_list_arr)
+    
+    try:
+        return page_exist_lvl == 1 and page_detail["edit"] == 1
+    except Exception as e:
+        print(f"is_edit_allowed_for_page\n\n\n {e}")
+        return False
+
+
+def redirect_to_page(wiki_page_id, token=None):
+    
+            page_route = frappe.db.get_value("Wiki Page", wiki_page_id, "route")
+            frappe.local.response["type"] = "redirect"
+            frappe.local.response["location"] = f"/{page_route}?token={token}"
+            raise frappe.Redirect
     
     
     # print(f"WWWWWWWWWWWWW {type (response.json()["status"] )} WWWWWWWWWWW")
@@ -808,9 +871,6 @@ def is_page_in_allowed_list(page_id:str, page_list_arr: list ):
     
     
     # print(f"WWWWWWWWWWWWW {response.json()["data"]["pages"]} WWWWWWWWWWW")
-    
-    
-    
 #     import requests
 
 # # Make a GET request
