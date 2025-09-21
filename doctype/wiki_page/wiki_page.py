@@ -565,6 +565,7 @@ def update(
     new_sidebar_group="",
     new_sidebar_items="",
     draft=False,
+    token=None,
 ):
     context = {"route": name}
     context = frappe._dict(context)
@@ -631,7 +632,11 @@ def update(
         out.route = patch.new_wiki_page.route
     else:
         out.route = patch.wiki_page_doc.route
-
+        
+    if token is not None:
+        out.route = out.route + f"?token={token}"
+    
+    printf(f"out route {out.route}")
     return out
 
 
@@ -864,8 +869,15 @@ def redirect_to_page(wiki_page_id, token=None):
             frappe.local.response["type"] = "redirect"
             frappe.local.response["location"] = f"/{page_route}?token={token}"
             raise frappe.Redirect
-    
-    
+
+
+
+
+def printf(content, color="\033[92m"):
+    length = 50
+    RESET = "\033[0m"
+    print(f"{color}{'#'*length}\n{content}\n{'#'*length}{RESET}")
+
     # print(f"WWWWWWWWWWWWW {type (response.json()["status"] )} WWWWWWWWWWW")
     # print(f"WWWWWWWWWWWWW {response.json()["status"]} WWWWWWWWWWW")
     
